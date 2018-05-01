@@ -1,0 +1,368 @@
+---
+title: "Project: High Dimensional Data"
+author: "Sunil Raut Kshetri, Zdenko Heyvaert, Matthias Van Limbergen, Tim Msc"
+date: "28 April 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+load("X_GSE21374.rda")
+# Gene expression data
+GeneExp <-t(X_GSE21374)
+# Dimension of the data
+dim(GeneExp)
+# View gene expression data
+ head(GeneExp[,1:10])
+
+load("RejectionStatus.rda")
+# View the response variable
+head(RejectionStatus)
+# table
+table(RejectionStatus$Reject_Status)
+```
+206 accepted (0) and 76 rejected (1) cases.
+
+## Q1: Data exploration (need more work, look at lda section)
+
+
+
+### Looking at the gene expressions for 3 accepted and 3 rejected cases
+```{r}
+
+count.accept <- count.reject <- 0
+nfig <- 3
+
+count.subject <- 0
+
+while(count.accept < nfig | count.reject < nfig){ # stopping condition
+  count.subject <- count.subject +1 
+  
+  if(RejectionStatus$Reject_Status[count.subject] == 0 & count.accept < nfig) {
+    count.accept = count.accept + 1
+    plot(GeneExp[count.subject,], main = paste("Subject", count.subject, ": Accepted"),
+    xlab = "ID", ylab = "Values")
+  }else if(RejectionStatus$Reject_Status[count.subject] == 1 & count.reject < nfig ){
+    count.reject = count.reject + 1
+    plot(GeneExp[count.subject,], main = paste("Subject", count.subject, ": Rejected"),
+    xlab = "ID", ylab = "Values")
+  }
+  
+}# end while
+
+```
+Does anyone see noticable difference?
+
+### Compute svd of GeneExpression matrix
+
+Comment: should the GeneExpression matrix be standardised or centred? In the lab, it was standardised. 
+```{r}
+# First thing we could do is plot these gene expressions in two dimensional score axes.
+
+# 1. standardize data matrix
+GeneExp.std <- scale(GeneExp, center = TRUE, scale = TRUE)
+# check
+# head(round(colMeans(GeneExpression), 10)) # OK
+# 2. compute svd
+GeneExp.std.svd <- svd(GeneExp.std)
+# remove 
+rm(GeneExp)
+rm(X_GSE21374)
+```
+
+### Scree plot
+```{r}
+# 3. scree plot
+nEig <- length(GeneExp.std.svd$d)
+totvar <- sum(GeneExp.std.svd$d^2)/(nEig -1)
+#par(mfrow = c(1,3))
+plot(GeneExp.std.svd$d[1:100]^2/(nEig -1), type = "b", ylab = "eigenvalues", xlab = 'j')
+
+barplot(GeneExp.std.svd$d[1:120]^2/(nEig-1)/totvar, names.arg = 1:120, ylab = "proportion variance", cex.lab = 1.5)
+
+cSum <- GeneExp.std.svd$d^2
+
+barplot(cumsum(cSum[1:120]/(nEig-1)/totvar), names.arg = 1:120,
+        ylab = "cumulative proportion.", cex.lab = 1.5,
+        ylim = c(0,1))
+abline(h=0.8)
+
+#par(mfrow = c(1,1))
+
+```
+Upto 80% variance is explained by the first 120 PCs out of total 282 PCs.
+
+
+### Compute scores and loadings
+```{r}
+# 4. compute scores and loadings
+k = 2
+Uk <- GeneExp.std.svd$u[,1:k]
+# loadings
+Vk <- GeneExp.std.svd$v[,1:k]
+Dk <- diag(GeneExp.std.svd$d[1:k])
+# scores
+Zk <- Uk %*% Dk
+rownames(Zk) <- RejectionStatus$Reject_Status
+```
+
+### Visualization of scores in reduced dimension
+
+```{r}
+# 5. visualization of scores in reduced dimension
+plot(Zk[,1], Zk[,2], main = "scores", type = "p", pch = 16,
+     xlab = "Z1", ylab = "Z2", col = RejectionStatus$Reject_Status+1)
+legend(-180, 180, legend = c( "accept", "reject"), bty = "n", lwd = 2, col = c(1,2), pch = c(16,16))
+```
+Observations seem to spread over score dimensions (Z1 and Z2 axes), i.e, no noticable separation between patients whose kidney transplantation were accepted versus rejected. 
+However, several transplantations were successful for subjects having scores $Z1 \geq 100$ and $Z2 \leq 50$. 
+
+
+### Histogram of loadings
+```{r}
+# 6.1 plot histogram of loadings
+par(mfrow =c(1,2))
+hist(Vk[,1], main = "V1", breaks = 100, xlim = c(-0.010, 0.010),
+     xlab = "V1")
+abline(v = c(quantile(Vk[,1] , 0.05), quantile(Vk[,1], 0.95)), col = c("red"), lwd = 2 )
+
+hist(Vk[,2], main = "V2", breaks = 100, xlim = c(-0.010, 0.010),
+     xlab = "V2")
+abline(v = c(quantile(Vk[,2] , 0.05), quantile(Vk[,2], 0.95)), col = c("red"), lwd = 2 )
+par(mfrow =c(1,1))
+
+# 6.2 
+par(mfrow =c(1,2))
+# V1
+plot(Vk[,1], main = "V1", ylab = "loading(V1)", xlab = "Gene ID", ylim = c(-0.015, 0.015))
+abline(h = 0, col = 1, lwd = 2 )
+abline(h = 2*sd(Vk[,1]), col = 2, lwd = 2 )
+abline(h = -2*sd(Vk[,1]), col = 2, lwd = 2 )
+
+# V2
+plot(Vk[,2], main = "V2", ylab = "loading(V2)", xlab = "Gene ID", ylim = c(-0.015, 0.015) )
+abline(h = 0, col = 1, lwd = 2 )
+abline(h = 2*sd(Vk[,2]), col = 2, lwd = 2 )
+abline(h = -2*sd(Vk[,2]), col = 2, lwd = 2 )
+par(mfrow =c(1,1))
+
+```
+
+It is hard to interprete from above graph of loadings (figure on the left) which gene expressions are useful. However, there are many gene expressions (figure on the right) that might be useful in a sense that they have loading higher than two standard daviations, but they are hard to distinguish.   
+
+
+
+### Elastic net for Sparse PC 
+```{r}
+# take 30 to 40 seconds to execute this piece of code
+library(glmnet)
+# 7 Searching for non-zero loadings for PC1 and PC2
+# par(mfrow=c(1,2))
+#For PC1
+set.seed(123)
+fit_loadings1=cv.glmnet(x = GeneExp.std, y = Zk[,1],
+                        alpha=0.5,nfolds = 5) # alpha = 0.5 for elestic net
+plot(fit_loadings1)
+
+#For PC2
+set.seed(123)
+fit_loadings2=cv.glmnet(x = GeneExp.std, y = Zk[,2],alpha=0.5,nfolds = 5)
+plot(fit_loadings2)
+```
+From 195 to 216 in PC-1 and from 177 to 200 gene expressions are useful.
+
+```{r}
+# 8. PCs from non-zero  loadings
+
+sparse_loadings1=as.vector(coef(fit_loadings1, s=fit_loadings1$lambda.1se))
+sparse_loadings2=as.vector(coef(fit_loadings2, s=fit_loadings2$lambda.1se))
+
+# scores in SPCs
+SPC1=GeneExp.std%*%sparse_loadings1[-1] #without the intercept
+SPC2=GeneExp.std%*%sparse_loadings2[-1] #without the intercept
+
+par(mfrow=c(1,2))
+plot(Zk[,1],Zk[,2],col=factor(RejectionStatus$Reject_Status),
+     xlab="PC1",ylab="PC2",pch=16,cex=1.2,
+     main="All 54675 genes \nfor PC1 and PC2", cex.main = 0.8)
+legend(-190,190,legend=c("accept","reject"),bty="n",col=c(1,2),pch=c(16,16),
+       cex=1.2)
+plot(SPC1,SPC2,col=factor(RejectionStatus$Reject_Status),
+     xlab="SPC1",ylab="SPC2",pch=16,cex=1.2,
+     main="195 genes for SPC1 \n and 177 genes for SPC2 ", cex.main = 0.8)
+legend(-190,190,legend=c("accept","reject"),bty="n",col=c(1,2),pch=c(16,16),
+       cex=1.2)
+```
+Still no separation between accepted and rejected kidney transplantation. However, significantly less number of gene expressions are useful after performing sparse PC on loadings. For example, about $0.3\5%$ (185/54675) gene expressions seem important for PC1 and $0.32\%$ (177/54675) gene expressions are important for PC2.
+
+```{r}
+# 1. LDA
+library(MASS)
+library(sparseLDA)
+
+# 2. Fitting LDA
+#========================================
+# GeneExp.lda=lda(x=GeneExp.std,grouping=RejectionStatus$Reject_Status)
+
+# I get get error message as "Error: cannot allocate vector of size 22.3 Gb"
+# need to check how we circumvent this issue
+```
+
+
+
+## Q2
+
+### Spliting dataset
+```{r}
+# split data
+set.seed(123)
+pTrainData <- 0.7 # 70% training
+nTrain <- ceiling(pTrainData*nrow(GeneExp.std))
+
+trainID <- sample(282, nTrain)
+
+# Training data
+trainX <- GeneExp.std[trainID,]
+trainY <- RejectionStatus$Reject_Status[trainID]
+table(trainY)
+
+# Test data
+testX <- GeneExp.std[-trainID,]
+testY <- RejectionStatus$Reject_Status[-trainID]
+table(testY)
+```
+
+### Principal Component Regression (PCR)
+```{r}
+# supress warnings 
+oldw = getOption("warn")
+options(warn = -1)
+library(boot) # for cv.glm()
+library(pROC)#the auc function is defined in here
+options(warn = oldw)
+
+X.train.svd <- svd(trainX)
+U.train <- X.train.svd$u
+D.train <- diag(X.train.svd$d)
+Z.train <- U.train%*%D.train
+V.train <- X.train.svd$v
+
+```
+
+### scree plot of training dataset
+```{r}
+# scree plot
+nEig <- length(X.train.svd$d)
+totvar <- sum(X.train.svd$d^2)/(nEig -1)
+#par(mfrow = c(1,3))
+plot(X.train.svd$d[1:120]^2/(nEig -1), type = "b", ylab = "eigenvalues", xlab = 'j')
+
+barplot(X.train.svd$d[1:120]^2/(nEig-1)/totvar, names.arg = 1:120, ylab = "proportion variance", cex.lab = 1.0)
+
+cSum <- X.train.svd$d^2
+
+barplot(cumsum(cSum[1:120]/(nEig-1)/totvar), names.arg = 1:120,
+        ylab = "cumulative proportion", cex.lab = 1,
+        ylim = c(0,1))
+abline(h=0.8)
+```
+It seems 80% of total variance, in training detaset, explained by first 89 PCs. So, we can proceed for cross validation with 89 PCs.
+
+### Cost function for AUC
+
+```{r}
+# Cost function
+AUC <- function(observedY, predictedY){
+  AUC = auc(observedY, predictedY)
+  return(AUC)
+}
+```
+
+
+### Model building
+```{r}
+# Model evaluation: Cross validation  
+nPC=89
+#for LOOCV K=sample size
+# K=length(trainY) # error as Mathihas aslo pointed out 
+K = 5
+
+set.seed(123)
+
+cv.pcr.error = rep(0,nPC)#We store our errors here
+
+for (i in 1:nPC){ 
+  data=data.frame(trainY=trainY, Z.train[,1:i])
+  cv.pcr.mod1=glm(trainY~.,data=data, family = "binomial")
+  cv.pcr.error[i]=cv.glm(data, cv.pcr.mod1, cost = AUC,K=K)$delta[1]
+  #cat("PC 1 to ",i,"nn")
+}
+
+#Number of PCs at minimum MSE: 12 PCs
+nPC_at_max_AUC_CV=c(1:nPC)[cv.pcr.error==max(cv.pcr.error)]
+ 
+max_AUC_CV = cv.pcr.error[nPC_at_max_AUC_CV]
+nPC_at_max_AUC_CV
+max_AUC_CV
+#Ploting results
+plot(cv.pcr.error, ylab = "AUC",xlab="n PCs", main = paste(K, "fold CV"))
+abline(v=nPC_at_max_AUC_CV, col = "red")
+```
+The maximum AUC 0.796 at 15th PCs.
+
+```{r}
+# Test the model with the test dataset
+Z.test <- as.matrix(testX)%*%V.train
+testX <- data.frame(testX)
+
+
+AUC_CV_PCR=max(cv.pcr.error)
+
+# select number of PCs based on AUC
+data=data.frame(Z.train[,1:nPC_at_max_AUC_CV])
+
+# best model based on AUC evaluation measure
+best_PCR_mod=glm(trainY~.,data=data,family="binomial")
+# best model based on AUC for prediction 
+datatest=data.frame(Z.test[,1:nPC_at_max_AUC_CV])
+
+# predict probabilities with response option
+predPCR_prob=predict(best_PCR_mod,newdata=datatest,type="response") 
+
+# test how good the best model is doing?
+AUC_test_PCR=AUC(testY,predPCR_prob)
+
+#Really close 
+abs(AUC_CV_PCR-AUC_test_PCR)
+```
+
+## Ridge regression (copied codes from Matthias :)
+```{r}
+#Ridge regression
+library(glmnet)
+set.seed(5)
+gridgamma <- seq(1,100, length = 10)
+ridge_mod=cv.glmnet(x = trainX, y = trainY,family="binomial",type.measure="auc",nfolds=K,alpha=0)
+plot(ridge_mod)
+
+#best gammas 
+bestgamma.1se=ridge_mod$lambda.1se
+bestgamma.min=ridge_mod$lambda.min
+AUC_CV_ridge=max(ridge_mod$cvm)
+
+#With the cv.glmnet function, 
+#you can now choose the gamma in predict function
+#we choose gamma min 
+predridge_prob=predict(ridge_mod,newx=as.matrix(testX),s=bestgamma.min,type="response")
+
+#how good are we doing on test? 
+AUC_test_ridge=auc(testY,predridge_prob) # give warning: Deprecated use a matrix as predictor. Unexpected results may be produced, please pass a numeric vector
+```
+
+
+
+## Lasso needs to be done
